@@ -8,21 +8,28 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
-using ICSharpCode.SharpZipLib.Zip;
+//using ICSharpCode.SharpZipLib.Core;
+//using ICSharpCode.SharpZipLib.Zip;
+//using ICSharpCode.SharpZipLib.Zip;
+//using ICSharpCode.SharpZipLib.Core;
+using Ionic.Zlib;
+using System.IO.Compression;
 using ICSharpCode.SharpZipLib.Core;
+using ICSharpCode.SharpZipLib.Zip;
 
 namespace eBdb.EpubReader {
     public class Epub : IDisposable
     {
         // Flag: Has Dispose already been called? 
         private bool disposed = false;
-
+        private Stream oStream;
         // Public implementation of Dispose pattern callable by consumers. 
         public void Dispose()
         {
             Dispose(true);
             GC.SuppressFinalize(this);
         }
+       
 
         // Protected implementation of Dispose pattern. 
         protected virtual void Dispose(bool disposing)
@@ -74,7 +81,7 @@ namespace eBdb.EpubReader {
         public Dictionary<string, ExtendedData> ExtendedData { get; private set; }
         public List<NavPoint> TOC { get; private set; }
 
-        private readonly ZipFile _EpubFile;
+        private readonly ZipArchive _EpubFile;
         private readonly string _ContentOpfPath;
         private string _TocFileName;
 
@@ -117,7 +124,8 @@ namespace eBdb.EpubReader {
 
 
             //if (File.Exists(ePubPath)) 
-            _EpubFile = new ZipFile(ePubPath); //ZipFile.Read(ePubPath);
+           oStream = 
+            _EpubFile = new ZipArchive(ePubPath); //ZipArchive.Read(ePubPath);
             //else throw new FileNotFoundException();
 
             string opfFilePath = GetOpfFilePath(_EpubFile);
@@ -219,6 +227,7 @@ namespace eBdb.EpubReader {
                 : match.Value;
         }
 
+      
         //
         //Developer: Brian Kenney
         //Date: 7/29/2012
@@ -226,14 +235,16 @@ namespace eBdb.EpubReader {
         //Details: 
         //some opf files come with the namespace prefix of odfc, so remvoe the prefix before processing
         //
-        private static string GetOpfFilePath(ZipFile epubFile)
+        private static string GetOpfFilePath(Stream oStream)
         {
+           
             string tmpXMLStream;
-            ZipEntry zipEntry = epubFile.GetEntry(@"meta-inf/container.xml");
-            if (zipEntry != null)
+            ZipArchive oZipArchive = new ZipArchive(oStream);
+            ZipArchiveEntry ZipArchiveEnty = oZipArchive.GetEntry(@"meta-inf/container.xml");
+            if (ZipArchiveEnty != null)
             {
                 XElement containerXml;
-                using (Stream zipStream = epubFile.GetInputStream(zipEntry))
+                using (Stream zipStream = ZipArchiveEnty.Open())
                 {
                     using (MemoryStream memoryStream = new MemoryStream())
                     {
@@ -295,11 +306,11 @@ namespace eBdb.EpubReader {
 
         private void LoadEpubMetaDataFromOpfFile(string opfFilePath)
         {
-            ZipEntry zipEntry = _EpubFile.GetEntry(opfFilePath);
-            if (zipEntry == null) throw new Exception("Invalid epub file.");
+            ZipArchiveEnty ZipArchiveEnty = _EpubFile.GetEntry(opfFilePath);
+            if (ZipArchiveEnty == null) throw new Exception("Invalid epub file.");
 
             XElement contentOpf;
-            using (Stream zipStream = _EpubFile.GetInputStream(zipEntry))
+            using (Stream zipStream = _EpubFile.GetInputStream(ZipArchiveEnty))
             {
                 using (MemoryStream memoryStream = new MemoryStream())
                 {
@@ -396,9 +407,9 @@ namespace eBdb.EpubReader {
                 else if (itemElement == null) continue;
 
                 string fileName = Uri.UnescapeDataString(itemElement.Attribute("href").Value);
-                ZipEntry contentZipEntry = _EpubFile.GetEntry(_ContentOpfPath + fileName);
-                if (contentZipEntry == null) throw new Exception("Invalid epub file.");
-                else if (contentZipEntry == null) continue;
+                ZipArchiveEnty contentZipArchiveEnty = _EpubFile.GetEntry(_ContentOpfPath + fileName);
+                if (contentZipArchiveEnty == null) throw new Exception("Invalid epub file.");
+                else if (contentZipArchiveEnty == null) continue;
                 //
                 //Developer: Brian Kenney
                 //Date: 7/29/2012
@@ -408,7 +419,7 @@ namespace eBdb.EpubReader {
                 //
                 //check to see if fileName has already been added to Content dictionary
                 if (!Content.Values.Any(item => item.FileName == fileName))
-                    Content.Add(fileName, new ContentData(fileName, _EpubFile, contentZipEntry));
+                    Content.Add(fileName, new ContentData(fileName, _EpubFile, contentZipArchiveEnty));
                 if (!alreadyProcessedFiles.Contains(spinElement.Attribute("idref").Value))
                     alreadyProcessedFiles.Add(spinElement.Attribute("idref").Value);
             }
@@ -421,14 +432,14 @@ namespace eBdb.EpubReader {
             foreach (var manifestElement in manifestElements)
             {
                 string fileName = manifestElement.Attribute("href").Value;
-                ZipEntry extendedZipEntry = _EpubFile.GetEntry(_ContentOpfPath + fileName);
-                if (extendedZipEntry == null) continue;
+                ZipArchiveEnty extendedZipArchiveEnty = _EpubFile.GetEntry(_ContentOpfPath + fileName);
+                if (extendedZipArchiveEnty == null) continue;
                 //check to see if fileName has already been added to Extended dictionary
                 string trimmedFileName = GetTrimmedFileName(fileName, true);
                 if (!ExtendedData.Keys.Contains(trimmedFileName))
                     ExtendedData.Add(trimmedFileName,
                         new ExtendedData(fileName, manifestElement.Attribute("media-type").Value, _EpubFile,
-                            extendedZipEntry));
+                            extendedZipArchiveEnty));
                 if (string.Equals(manifestElement.Attribute("media-type").Value, "application/x-dtbncx+xml",
                     StringComparison.CurrentCultureIgnoreCase)) _TocFileName = manifestElement.Attribute("href").Value;
             }
